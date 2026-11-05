@@ -17259,6 +17259,9 @@ local Cfg = {
 	ESPVehicle = true,
 	ESPSkeleton = true,
 	ESPMaxDistance = 800,
+	AutoFire = false,
+	AutoFireDelay = 0.06,
+	AutoFireHold = 0.03,
 }
 
 getgenv().CityChargeCfg = Cfg
@@ -17419,6 +17422,14 @@ local damageTotal = 0
 local revived = 0
 local cachedTarget = nil
 local cachedAt = 0
+local autoFireLast = 0
+local aimHeld = false
+local aimLastPress = 0
+local fireHeld = false
+local VirtualInputManager = nil
+pcall(function()
+	VirtualInputManager = game:GetService("VirtualInputManager")
+end)
 
 local function screenCenter()
 	local vp = Camera.ViewportSize
@@ -18243,6 +18254,23 @@ tabAim:Toggle({
 })
 
 tabAim:Toggle({
+	Title = "自动开火",
+	Desc = "圈内有人自动按左键",
+	Value = Cfg.AutoFire,
+	Callback = function(state)
+		Cfg.AutoFire = state
+	end,
+})
+
+tabAim:Slider({
+	Title = "开火间隔（0.02=极快）",
+	Value = { Min = 2, Max = 40, Default = math.floor(Cfg.AutoFireDelay * 100) },
+	Callback = function(v)
+		Cfg.AutoFireDelay = math.max(0.02, v / 100)
+	end,
+})
+
+tabAim:Toggle({
 	Title = "掩体判断（被挡住不锁）",
 	Value = Cfg.CoverCheck,
 	Callback = function(state)
@@ -18421,6 +18449,54 @@ RunService.RenderStepped:Connect(function()
 		elseif tracer.Visible then
 			tracer.Visible = false
 		end
+	end
+
+	if Cfg.AutoFire and Cfg.Enabled and cachedTarget and cachedTarget.part and cachedTarget.part.Parent then
+		if os.clock() - (aimLastPress or 0) > 0.12 then
+			aimLastPress = os.clock()
+			if type(mouse2press) == "function" then
+				pcall(mouse2press)
+			end
+			if VirtualInputManager then
+				pcall(function()
+					VirtualInputManager:SendMouseButtonEvent(0, 0, 2, true, game, 1)
+				end)
+			end
+			aimHeld = true
+		end
+		if not fireHeld then
+			if type(mouse1press) == "function" then
+				pcall(mouse1press)
+			elseif VirtualInputManager then
+				pcall(function()
+					VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+				end)
+			end
+			fireHeld = true
+		end
+	end
+
+	if aimHeld and (not Cfg.AutoFire or not Cfg.Enabled or not cachedTarget or not cachedTarget.part or not cachedTarget.part.Parent) then
+		if type(mouse2release) == "function" then
+			pcall(mouse2release)
+		end
+		if VirtualInputManager then
+			pcall(function()
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 2, false, game, 1)
+			end)
+		end
+		if fireHeld then
+			if type(mouse1release) == "function" then
+				pcall(mouse1release)
+			end
+			if VirtualInputManager then
+				pcall(function()
+					VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+				end)
+			end
+			fireHeld = false
+		end
+		aimHeld = false
 	end
 
 	circle.Visible = Cfg.ShowCircle and Cfg.Enabled
